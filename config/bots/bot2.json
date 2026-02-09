@@ -1,0 +1,25 @@
+{
+  "id": "bot2",
+  "enabled": false,
+  "username": "nishu100306@gmail.com",
+  "auth": "microsoft",
+  "host": "cosmicsky.net",
+  "port": 25565,
+  "version": "1.20.4",
+  "proxy": {
+    "enabled": false,
+    "host": "localhost",
+    "port": 1337,
+    "type": "socks5",
+    "username": "",
+    "password": ""
+  },
+  "periodicTasks": {
+    "enabled": true,
+    "interval": 60000,
+    "commands": [
+      "/join"
+    ],
+    "logTopEveryNCycles": 10
+  }
+}

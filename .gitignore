@@ -1,10 +1,7 @@
 # Dependencies
 node_modules/
 
-# Configuration
-config/main.json
-config/bots/*.json
-!config/bots/*.example.json
+# Data files
 
 # Data files
 data/
