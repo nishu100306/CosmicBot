@@ -1,0 +1,18 @@
+{
+  "discord": {
+    "token": "YOUR_DISCORD_BOT_TOKEN",
+    "clientId": "YOUR_CLIENT_ID",
+    "guildId": "YOUR_GUILD_ID"
+  },
+  "settings": {
+    "shortPause": 1000,
+    "reconnectDelay": 31000,
+    "dataPath": "./data",
+    "botsConfigPath": "./config/bots"
+  },
+  "appearance": {
+    "embedColor": "0x9b59b6",
+    "botImage": "https://cdn.discordapp.com/attachments/1044443844944601098/1401777359669035150/pheonix.png",
+    "botName": "CosmicBot V0"
+  }
+}

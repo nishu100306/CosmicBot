@@ -1,0 +1,26 @@
+{
+  "name": "cosmic-bot-v0",
+  "version": "0.1.0",
+  "description": "Multi-bot Minecraft analytics bot with Discord integration",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "deploy": "node deploy-commands.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "minecraft",
+    "mineflayer",
+    "discord",
+    "bot",
+    "analytics"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "discord.js": "^14.21.0",
+    "minecraft-protocol": "^1.62.0",
+    "mineflayer": "^4.30.0",
+    "socks": "^2.7.1"
+  }
+}

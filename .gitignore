@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+
+# Configuration
+config/main.json
+config/bots/*.json
+!config/bots/*.example.json
+
+# Data files
+data/
+*.txt
+
+# Logs
+logs/
+*.log
+
+# Environment
+.env
+.env.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
