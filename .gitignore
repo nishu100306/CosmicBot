@@ -11,6 +11,12 @@ data/
 logs/
 *.log
 
+# Config (keep example files tracked)
+config/*
+!config/*.example.json
+config/bots/*
+!config/bots/*.example.json
+
 # Environment
 .env
 .env.local
