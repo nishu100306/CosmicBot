@@ -1,7 +1,7 @@
 {
   "id": "bot1",
   "enabled": true,
-  "username": "mauriciobenjaminpintocabezas@gmail.com",
+  "username": "mauriciobenjaminpintocabezas@gmail.co",
   "auth": "microsoft",
   "host": "cosmicsky.net",
   "port": 25565,
