@@ -39,13 +39,17 @@ class DataLogger {
             })
 
             // Open the /is top menu
-            await bot.chat('/is top');
-            await wait(shortPause);
-            /*
-            if (await bot.currentWindow === null) {
+            
+            let count = 0;
+            while (await bot.currentWindow === null && count < 10) {
+                await bot.chat('/is top');
+                await wait(shortPause);
+                count += 1;
+            }
+            if (count >= 10) {
                 console.log('failed to open ./is top menu. check if bot is in the lobby')
                 return false;
-            }*/
+            }
             for (const key of Object.keys(LEAGUES)) {
                 await bot.clickWindow(LEAGUES[key], 0, 0);
                 await wait(shortPause);
