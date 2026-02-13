@@ -13,7 +13,8 @@ module.exports = {
         });
 
         const botManager = global.botManager;
-        const botId = interaction.options.getString('bot') || botManager.getAllBots()[0]?.[0];
+        const config = global.config;
+        const botId = interaction.options.getString('bot') || config.settings.defaultBot;
         const bot = botManager.getBot(botId);
 
         if (!bot) {

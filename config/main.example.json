@@ -5,6 +5,7 @@
     "guildId": "YOUR_GUILD_ID"
   },
   "settings": {
+    "defaultBot": "bot1",
     "shortPause": 1000,
     "reconnectDelay": 31000,
     "dataPath": "./data",

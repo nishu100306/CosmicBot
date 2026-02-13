@@ -19,7 +19,7 @@ module.exports = {
 
         const botManager = global.botManager;
         const message = interaction.options.getString('message');
-        const botId = interaction.options.getString('bot') || botManager.getAllBots()[0]?.[0];
+        const botId = interaction.options.getString('bot') || global.config.settings.defaultBot;
 
         const bot = botManager.getBot(botId);
 

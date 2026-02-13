@@ -16,7 +16,7 @@ module.exports = {
         const dataLogger = global.dataLogger;
         const config = global.config;
 
-        const botId = interaction.options.getString('bot') || botManager.getAllBots()[0]?.[0];
+        const botId = interaction.options.getString('bot') || config.settings.defaultBot;
         const bot = botManager.getBot(botId);
 
         if (!bot) {
