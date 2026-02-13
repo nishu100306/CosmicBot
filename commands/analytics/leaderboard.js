@@ -7,7 +7,7 @@ module.exports = {
         .setDescription('Shows top islands by trophy growth')
         .addIntegerOption(option =>
             option.setName('timeframe')
-                .setDescription('Timeframe in hours (default: 24)')
+                .setDescription('Timeframe in hours (default: 3)')
                 .setRequired(false)
                 .setMinValue(1)
                 .setMaxValue(168)
@@ -24,7 +24,7 @@ module.exports = {
 
         try {
             const dataLogger = global.dataLogger;
-            const timeframe = interaction.options.getInteger('timeframe') || 24;
+            const timeframe = interaction.options.getInteger('timeframe') || 3;
             const limit = interaction.options.getInteger('limit') || 10;
 
             const fileLines = await dataLogger.readIslandData();
@@ -42,7 +42,7 @@ module.exports = {
             const cutoffTime = Date.now() - timeframeMs;
 
             for (const line of fileLines) {
-                const [leader, level, position, trophies, timestamp] = line.split(',');
+                const [league, leader, level, position, trophies, timestamp] = line.split(',');
                 const time = parseInt(timestamp) * 1000;
 
                 if (time < cutoffTime) continue;
@@ -107,7 +107,8 @@ module.exports = {
                     name: `${medal} ${island.leader}`,
                     value: `**Growth:** ${island.growth.toLocaleString()} trophies\n` +
                            `**Rate:** ${island.hourlyRate.toFixed(2)}/hr\n` +
-                           `**Level:** ${island.currentLevel} | **Rank:** #${island.currentRank > 0 ? island.currentRank : 'N/A'}`,
+                           `**Level:** ${island.currentLevel} | **Rank:** #${island.currentRank > 0 ? island.currentRank : 'N/A'}\n` +
+                           `<t:${Math.floor(island.minTime / 1000)}:t> → <t:${Math.floor(island.maxTime / 1000)}:t>`,
                     inline: true
                 };
             });
