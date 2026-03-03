@@ -80,9 +80,8 @@ class DataLogger {
                     const leader = loreText.split('. ')[1].split(' - ')[0];
                     const level = loreText.split('Island Level ')[1].split('\n')[0];
                     const position = loreText.split('.')[0];
-                    const trophies = loreText.split('Trophy Points: ')[1]
-                        .replaceAll(',', '')
-                        .replaceAll('\n', '');
+                    const trophies = loreText.match(/Trophy Points: ([\d,]+)/)[1]
+                        .replaceAll(',', '');
                     const timestamp = Math.floor(Date.now() / 1000);
 
                     const record = new TopRecord(league, leader, level, position, trophies, timestamp);
