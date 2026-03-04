@@ -9,7 +9,14 @@
     "shortPause": 1000,
     "reconnectDelay": 31000,
     "dataPath": "./data",
-    "botsConfigPath": "./config/bots"
+    "botsConfigPath": "./config/bots",
+    "autoLeaderboard": {
+      "enabled": false,
+      "channelId": null,
+      "intervalMinutes": 60,
+      "timeframe": 1,
+      "limit": 10
+    }
   },
   "appearance": {
     "embedColor": "0x9b59b6",

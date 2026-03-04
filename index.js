@@ -95,6 +95,44 @@ console.error = (...args) => {
     queueLogMessage(['[ERROR]', ...args]);
 };
 
+// Auto leaderboard posting
+const buildLeaderboardEmbed = require('./utils/leaderboardBuilder');
+
+global.autoLeaderboardInterval = null;
+
+global.startAutoLeaderboard = () => {
+    global.stopAutoLeaderboard();
+
+    const alConfig = config.settings.autoLeaderboard;
+    if (!alConfig?.enabled || !alConfig.channelId) return;
+
+    const intervalMs = alConfig.intervalMinutes * 60 * 1000;
+
+    global.autoLeaderboardInterval = setInterval(async () => {
+        try {
+            const channel = await client.channels.fetch(alConfig.channelId);
+            if (!channel || !channel.isTextBased()) return;
+
+            const embed = await buildLeaderboardEmbed(dataLogger, alConfig.timeframe, alConfig.limit);
+            if (embed) {
+                await channel.send({ embeds: [embed] });
+            }
+        } catch (err) {
+            console.error('[AutoLeaderboard] Error posting leaderboard:', err.message);
+        }
+    }, intervalMs);
+
+    console.log(`[AutoLeaderboard] Started — posting every ${alConfig.intervalMinutes} min to channel ${alConfig.channelId}`);
+};
+
+global.stopAutoLeaderboard = () => {
+    if (global.autoLeaderboardInterval) {
+        clearInterval(global.autoLeaderboardInterval);
+        global.autoLeaderboardInterval = null;
+        console.log('[AutoLeaderboard] Stopped');
+    }
+};
+
 // Load Discord commands
 client.commands = new Collection();
 const commandsPath = path.join(__dirname, 'commands');
@@ -137,6 +175,9 @@ client.once(Events.ClientReady, async (c) => {
             console.error(`Failed to start bot ${botConfig.id}:`, err.message);
         }
     }
+
+    // Start auto leaderboard if configured
+    global.startAutoLeaderboard();
 });
 
 // Handle Discord slash commands
