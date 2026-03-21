@@ -4,6 +4,7 @@ const { Client, GatewayIntentBits, Collection, Events, MessageFlags } = require(
 const BotManager = require('./bots/BotManager');
 const DataLogger = require('./utils/dataLogger');
 const BotConfigManager = require('./utils/botConfigManager');
+const PlayerTracker = require('./utils/playerTracker');
 
 // Load main configuration
 let config;
@@ -178,6 +179,12 @@ client.once(Events.ClientReady, async (c) => {
 
     // Start auto leaderboard if configured
     global.startAutoLeaderboard();
+
+    // Start player tracker if configured
+    global.playerTracker = new PlayerTracker(config, botManager, client);
+    if (config.settings.trackPlayers?.enabled) {
+        await global.playerTracker.start();
+    }
 });
 
 // Handle Discord slash commands

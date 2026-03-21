@@ -10,6 +10,12 @@
     "reconnectDelay": 31000,
     "dataPath": "./data",
     "botsConfigPath": "./config/bots",
+    "trackPlayers": {
+      "enabled": false,
+      "channelId": null,
+      "intervalMs": 10000
+    },
+    "dimensionBlacklist": [],
     "autoLeaderboard": {
       "enabled": false,
       "channelId": null,
