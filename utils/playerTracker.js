@@ -1,7 +1,10 @@
 const fsp = require('node:fs/promises');
 const path = require('path');
+const wait = require('node:timers/promises').setTimeout;
+const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const getInstancePlayers = require('./getInstancePlayers');
 const getDimension = require('./getDimension');
+const EmbedHelper = require('./embedBuilder');
 
 class PlayerTracker {
     constructor(config, botManager, discordClient) {
@@ -31,6 +34,110 @@ class PlayerTracker {
         } catch (err) {
             // File doesn't exist yet
         }
+    }
+
+    async sendBanPrompt(channel, playerName, wasBanned = false, isRevival = false) {
+        const embed = EmbedHelper.createBaseEmbed()
+            .setTitle('New Player Detected')
+            .setThumbnail(`https://mineskin.eu/bust/${playerName}/100.png`)
+            .setDescription(`**${playerName}** joined the instance.\n\nBan this player?`);
+
+        const buttons = [
+            new ButtonBuilder()
+                .setCustomId(`ban_yes_${playerName}`)
+                .setLabel(`/is ban ${playerName}`)
+                .setStyle(ButtonStyle.Danger),
+            new ButtonBuilder()
+                .setCustomId(`ban_no_${playerName}`)
+                .setLabel('Ignore')
+                .setStyle(ButtonStyle.Secondary)
+        ];
+
+        if (wasBanned) {
+            buttons.push(
+                new ButtonBuilder()
+                    .setCustomId(`unban_${playerName}`)
+                    .setLabel(`/is unban ${playerName}`)
+                    .setStyle(ButtonStyle.Success)
+            );
+        }
+
+        const row = new ActionRowBuilder().addComponents(buttons);
+        const pingRoleId = this.tpConfig.pingRoleId;
+        const content = (!isRevival && pingRoleId) ? `<@&${pingRoleId}>` : undefined;
+        const message = await channel.send({ content, embeds: [embed], components: [row] });
+
+        try {
+            const selection = await message.awaitMessageComponent({ time: 300_000 });
+
+            if (selection.customId === `ban_yes_${playerName}`) {
+                await selection.deferUpdate();
+                const botId = this.config.settings.defaultBot;
+                const bot = this.botManager.getBot(botId);
+
+                if (bot) {
+                    const shortPause = this.config.settings.shortPause;
+                    await wait(shortPause);
+                    await bot.chat(`/is ban ${playerName}`);
+                }
+
+                const doneEmbed = EmbedHelper.createBaseEmbed()
+                    .setTitle('Player Banned')
+                    .setThumbnail(`https://mineskin.eu/bust/${playerName}/100.png`)
+                    .setDescription(`Executed \`/is ban ${playerName}\``);
+
+                await message.edit({ embeds: [doneEmbed], components: [] });
+                await message.react('🔄');
+                this.listenForRevive(message, channel, playerName, true);
+            } else if (selection.customId === `unban_${playerName}`) {
+                await selection.deferUpdate();
+                const botId = this.config.settings.defaultBot;
+                const bot = this.botManager.getBot(botId);
+
+                if (bot) {
+                    const shortPause = this.config.settings.shortPause;
+                    await wait(shortPause);
+                    await bot.chat(`/is unban ${playerName}`);
+                }
+
+                const doneEmbed = EmbedHelper.createBaseEmbed()
+                    .setTitle('Player Unbanned')
+                    .setThumbnail(`https://mineskin.eu/bust/${playerName}/100.png`)
+                    .setDescription(`Executed \`/is unban ${playerName}\``);
+
+                await message.edit({ embeds: [doneEmbed], components: [] });
+                await message.react('🔄');
+                this.listenForRevive(message, channel, playerName, false);
+            } else {
+                const ignoredEmbed = EmbedHelper.createBaseEmbed()
+                    .setTitle('Player Ignored')
+                    .setThumbnail(`https://mineskin.eu/bust/${playerName}/100.png`)
+                    .setDescription(`**${playerName}** was ignored.`);
+
+                await selection.update({ embeds: [ignoredEmbed], components: [] });
+                await message.react('🔄');
+                this.listenForRevive(message, channel, playerName, false);
+            }
+        } catch (err) {
+            // Timed out — remove buttons
+            const expiredEmbed = EmbedHelper.createBaseEmbed()
+                .setTitle('New Player Detected')
+                .setThumbnail(`https://mineskin.eu/bust/${playerName}/100.png`)
+                .setDescription(`**${playerName}** joined the instance.\n\n*Selection timed out.*`);
+
+            await message.edit({ embeds: [expiredEmbed], components: [] }).catch(() => {});
+            await message.react('🔄').catch(() => {});
+            this.listenForRevive(message, channel, playerName, false);
+        }
+    }
+
+    listenForRevive(message, channel, playerName, wasBanned) {
+        const filter = (reaction, user) => reaction.emoji.name === '🔄' && !user.bot;
+
+        message.awaitReactions({ filter, max: 1 }).then(async () => {
+            await message.reactions.removeAll().catch(() => {});
+            await this.sendBanPrompt(channel, playerName, wasBanned, true);
+        }).catch(() => {});
     }
 
     async start() {
@@ -69,7 +176,7 @@ class PlayerTracker {
                     const channel = await this.discordClient.channels.fetch(this.tpConfig.channelId);
                     if (channel && channel.isTextBased()) {
                         for (const name of newPlayers) {
-                            await channel.send(`\`\`\`\n/is ban ${name}\n\`\`\``);
+                            this.sendBanPrompt(channel, name);
                         }
                     }
                 }

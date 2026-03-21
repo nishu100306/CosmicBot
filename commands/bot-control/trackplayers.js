@@ -21,12 +21,23 @@ module.exports = {
                 .setRequired(false)
                 .setMinValue(10)
                 .setMaxValue(300000)
+        )
+        .addRoleOption(option =>
+            option.setName('pingrole')
+                .setDescription('Role to ping when a new player is detected')
+                .setRequired(false)
+        )
+        .addBooleanOption(option =>
+            option.setName('clearrole')
+                .setDescription('Set to true to remove the ping role')
+                .setRequired(false)
         ),
     async execute(interaction) {
         const config = global.config;
         const enabled = interaction.options.getBoolean('enabled');
         const channel = interaction.options.getChannel('channel');
         const interval = interaction.options.getInteger('interval');
+        const pingRole = interaction.options.getRole('pingrole');
 
         if (!config.settings.trackPlayers) {
             config.settings.trackPlayers = {
@@ -40,6 +51,8 @@ module.exports = {
 
         if (channel) tpConfig.channelId = channel.id;
         if (interval) tpConfig.intervalMs = interval;
+        if (pingRole) tpConfig.pingRoleId = pingRole.id;
+        if (interaction.options.getBoolean('clearrole')) tpConfig.pingRoleId = null;
         tpConfig.enabled = enabled;
 
         if (enabled && !tpConfig.channelId) {
@@ -57,8 +70,9 @@ module.exports = {
 
         const status = enabled ? 'Enabled' : 'Disabled';
         const ch = tpConfig.channelId ? `<#${tpConfig.channelId}>` : 'Not set';
+        const role = tpConfig.pingRoleId ? `<@&${tpConfig.pingRoleId}>` : 'None';
         await interaction.reply({
-            content: `**Player Tracking ${status}**\n**Channel:** ${ch}\n**Interval:** ${tpConfig.intervalMs}ms`,
+            content: `**Player Tracking ${status}**\n**Channel:** ${ch}\n**Interval:** ${tpConfig.intervalMs}ms\n**Ping Role:** ${role}`,
             flags: MessageFlags.Ephemeral
         });
     },
