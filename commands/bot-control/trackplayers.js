@@ -31,6 +31,11 @@ module.exports = {
             option.setName('clearrole')
                 .setDescription('Set to true to remove the ping role')
                 .setRequired(false)
+        )
+        .addBooleanOption(option =>
+            option.setName('automatic')
+                .setDescription('Automatically ban new players (default: false)')
+                .setRequired(false)
         ),
     async execute(interaction) {
         const config = global.config;
@@ -53,6 +58,8 @@ module.exports = {
         if (interval) tpConfig.intervalMs = interval;
         if (pingRole) tpConfig.pingRoleId = pingRole.id;
         if (interaction.options.getBoolean('clearrole')) tpConfig.pingRoleId = null;
+        const automatic = interaction.options.getBoolean('automatic');
+        if (automatic !== null) tpConfig.automatic = automatic;
         tpConfig.enabled = enabled;
 
         if (enabled && !tpConfig.channelId) {
@@ -72,7 +79,7 @@ module.exports = {
         const ch = tpConfig.channelId ? `<#${tpConfig.channelId}>` : 'Not set';
         const role = tpConfig.pingRoleId ? `<@&${tpConfig.pingRoleId}>` : 'None';
         await interaction.reply({
-            content: `**Player Tracking ${status}**\n**Channel:** ${ch}\n**Interval:** ${tpConfig.intervalMs}ms\n**Ping Role:** ${role}`,
+            content: `**Player Tracking ${status}**\n**Channel:** ${ch}\n**Interval:** ${tpConfig.intervalMs}ms\n**Ping Role:** ${role}\n**Automatic:** ${tpConfig.automatic ? 'Yes' : 'No'}`,
             flags: MessageFlags.Ephemeral
         });
     },

@@ -13,6 +13,41 @@ class PlayerTracker {
         this.discordClient = discordClient;
         this.interval = null;
         this.seenPlayers = new Set();
+        this.commandQueue = [];
+        this.processingQueue = false;
+    }
+
+    async queueCommand(command) {
+        return new Promise((resolve, reject) => {
+            this.commandQueue.push({ command, resolve, reject });
+            this.processQueue();
+        });
+    }
+
+    async processQueue() {
+        if (this.processingQueue) return;
+        this.processingQueue = true;
+
+        while (this.commandQueue.length > 0) {
+            const { command, resolve, reject } = this.commandQueue.shift();
+            try {
+                const botId = this.config.settings.defaultBot;
+                const bot = this.botManager.getBot(botId);
+                if (!bot) {
+                    reject(new Error('Bot not available'));
+                    continue;
+                }
+                const shortPause = this.config.settings.shortPause;
+                await wait(shortPause);
+                await bot.chat(command);
+                await wait(shortPause);
+                resolve();
+            } catch (err) {
+                reject(err);
+            }
+        }
+
+        this.processingQueue = false;
     }
 
     get tpConfig() {
@@ -72,14 +107,7 @@ class PlayerTracker {
 
             if (selection.customId === `ban_yes_${playerName}`) {
                 await selection.deferUpdate();
-                const botId = this.config.settings.defaultBot;
-                const bot = this.botManager.getBot(botId);
-
-                if (bot) {
-                    const shortPause = this.config.settings.shortPause;
-                    await wait(shortPause);
-                    await bot.chat(`/is ban ${playerName}`);
-                }
+                await this.queueCommand(`/is ban ${playerName}`);
 
                 const doneEmbed = EmbedHelper.createBaseEmbed()
                     .setTitle('Player Banned')
@@ -91,14 +119,7 @@ class PlayerTracker {
                 this.listenForRevive(message, channel, playerName, true);
             } else if (selection.customId === `unban_${playerName}`) {
                 await selection.deferUpdate();
-                const botId = this.config.settings.defaultBot;
-                const bot = this.botManager.getBot(botId);
-
-                if (bot) {
-                    const shortPause = this.config.settings.shortPause;
-                    await wait(shortPause);
-                    await bot.chat(`/is unban ${playerName}`);
-                }
+                await this.queueCommand(`/is unban ${playerName}`);
 
                 const doneEmbed = EmbedHelper.createBaseEmbed()
                     .setTitle('Player Unbanned')
@@ -128,6 +149,58 @@ class PlayerTracker {
             await message.edit({ embeds: [expiredEmbed], components: [] }).catch(() => {});
             await message.react('🔄').catch(() => {});
             this.listenForRevive(message, channel, playerName, false);
+        }
+    }
+
+    async autoBan(channel, playerName) {
+        try {
+            await this.queueCommand(`/is ban ${playerName}`);
+
+            const embed = EmbedHelper.createBaseEmbed()
+                .setTitle('Player Auto-Banned')
+                .setThumbnail(`https://mineskin.eu/bust/${playerName}/100.png`)
+                .setDescription(`Automatically executed \`/is ban ${playerName}\``);
+
+            const row = new ActionRowBuilder().addComponents(
+                new ButtonBuilder()
+                    .setCustomId(`unban_${playerName}`)
+                    .setLabel(`/is unban ${playerName}`)
+                    .setStyle(ButtonStyle.Success)
+            );
+
+            const message = await channel.send({ embeds: [embed], components: [row] });
+
+            try {
+                const selection = await message.awaitMessageComponent({ time: 300_000 });
+
+                if (selection.customId === `unban_${playerName}`) {
+                    await selection.deferUpdate();
+                    await this.queueCommand(`/is unban ${playerName}`);
+
+                    const doneEmbed = EmbedHelper.createBaseEmbed()
+                        .setTitle('Player Unbanned')
+                        .setThumbnail(`https://mineskin.eu/bust/${playerName}/100.png`)
+                        .setDescription(`Executed \`/is unban ${playerName}\``);
+
+                    await message.edit({ embeds: [doneEmbed], components: [] });
+                    await message.react('🔄');
+                    this.listenForRevive(message, channel, playerName, false);
+                }
+            } catch (err) {
+                await message.edit({ components: [] }).catch(() => {});
+                await message.react('🔄').catch(() => {});
+                this.listenForRevive(message, channel, playerName, true);
+            }
+        } catch (err) {
+            console.error('[PlayerTracker] Auto-ban error:', err.message);
+        }
+    }
+
+    async addToWhitelist(playerName) {
+        const lowerName = playerName.toLowerCase();
+        if (!this.seenPlayers.has(lowerName)) {
+            this.seenPlayers.add(lowerName);
+            await fsp.appendFile(this.seenFile, playerName + '\n');
         }
     }
 
@@ -176,7 +249,11 @@ class PlayerTracker {
                     const channel = await this.discordClient.channels.fetch(this.tpConfig.channelId);
                     if (channel && channel.isTextBased()) {
                         for (const name of newPlayers) {
-                            this.sendBanPrompt(channel, name);
+                            if (this.tpConfig.automatic) {
+                                this.autoBan(channel, name);
+                            } else {
+                                this.sendBanPrompt(channel, name);
+                            }
                         }
                     }
                 }
