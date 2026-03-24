@@ -118,17 +118,52 @@ class PlayerTracker {
                 await message.react('🔄');
                 this.listenForRevive(message, channel, playerName, true);
             } else if (selection.customId === `unban_${playerName}`) {
-                await selection.deferUpdate();
-                await this.queueCommand(`/is unban ${playerName}`);
-
-                const doneEmbed = EmbedHelper.createBaseEmbed()
-                    .setTitle('Player Unbanned')
+                const confirmEmbed = EmbedHelper.createBaseEmbed()
+                    .setTitle('Confirm Unban')
                     .setThumbnail(`https://mineskin.eu/bust/${playerName}/100.png`)
-                    .setDescription(`Executed \`/is unban ${playerName}\``);
+                    .setDescription(`Are you sure you want to unban **${playerName}**?`);
 
-                await message.edit({ embeds: [doneEmbed], components: [] });
-                await message.react('🔄');
-                this.listenForRevive(message, channel, playerName, false);
+                const confirmRow = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder()
+                        .setCustomId(`unban_confirm_${playerName}`)
+                        .setLabel('Confirm Unban')
+                        .setStyle(ButtonStyle.Success),
+                    new ButtonBuilder()
+                        .setCustomId(`unban_cancel_${playerName}`)
+                        .setLabel('Cancel')
+                        .setStyle(ButtonStyle.Secondary)
+                );
+
+                await selection.update({ embeds: [confirmEmbed], components: [confirmRow] });
+
+                try {
+                    const confirm = await message.awaitMessageComponent({ time: 60_000 });
+
+                    if (confirm.customId === `unban_confirm_${playerName}`) {
+                        await confirm.deferUpdate();
+                        await this.queueCommand(`/is unban ${playerName}`);
+
+                        const doneEmbed = EmbedHelper.createBaseEmbed()
+                            .setTitle('Player Unbanned')
+                            .setThumbnail(`https://mineskin.eu/bust/${playerName}/100.png`)
+                            .setDescription(`Executed \`/is unban ${playerName}\``);
+
+                        await message.edit({ embeds: [doneEmbed], components: [] });
+                        await message.react('🔄');
+                        this.listenForRevive(message, channel, playerName, false);
+                    } else {
+                        await confirm.update({ embeds: [embed], components: [row] });
+                        const reSelection = await message.awaitMessageComponent({ time: 300_000 });
+                        // Re-handle by recursing the prompt
+                        await message.edit({ components: [] });
+                        await message.react('🔄');
+                        this.listenForRevive(message, channel, playerName, true);
+                    }
+                } catch (err) {
+                    await message.edit({ components: [] }).catch(() => {});
+                    await message.react('🔄').catch(() => {});
+                    this.listenForRevive(message, channel, playerName, true);
+                }
             } else {
                 const ignoredEmbed = EmbedHelper.createBaseEmbed()
                     .setTitle('Player Ignored')
@@ -174,17 +209,50 @@ class PlayerTracker {
                 const selection = await message.awaitMessageComponent({ time: 300_000 });
 
                 if (selection.customId === `unban_${playerName}`) {
-                    await selection.deferUpdate();
-                    await this.queueCommand(`/is unban ${playerName}`);
-
-                    const doneEmbed = EmbedHelper.createBaseEmbed()
-                        .setTitle('Player Unbanned')
+                    const confirmEmbed = EmbedHelper.createBaseEmbed()
+                        .setTitle('Confirm Unban')
                         .setThumbnail(`https://mineskin.eu/bust/${playerName}/100.png`)
-                        .setDescription(`Executed \`/is unban ${playerName}\``);
+                        .setDescription(`Are you sure you want to unban **${playerName}**?`);
 
-                    await message.edit({ embeds: [doneEmbed], components: [] });
-                    await message.react('🔄');
-                    this.listenForRevive(message, channel, playerName, false);
+                    const confirmRow = new ActionRowBuilder().addComponents(
+                        new ButtonBuilder()
+                            .setCustomId(`unban_confirm_${playerName}`)
+                            .setLabel('Confirm Unban')
+                            .setStyle(ButtonStyle.Success),
+                        new ButtonBuilder()
+                            .setCustomId(`unban_cancel_${playerName}`)
+                            .setLabel('Cancel')
+                            .setStyle(ButtonStyle.Secondary)
+                    );
+
+                    await selection.update({ embeds: [confirmEmbed], components: [confirmRow] });
+
+                    try {
+                        const confirm = await message.awaitMessageComponent({ time: 60_000 });
+
+                        if (confirm.customId === `unban_confirm_${playerName}`) {
+                            await confirm.deferUpdate();
+                            await this.queueCommand(`/is unban ${playerName}`);
+
+                            const doneEmbed = EmbedHelper.createBaseEmbed()
+                                .setTitle('Player Unbanned')
+                                .setThumbnail(`https://mineskin.eu/bust/${playerName}/100.png`)
+                                .setDescription(`Executed \`/is unban ${playerName}\``);
+
+                            await message.edit({ embeds: [doneEmbed], components: [] });
+                            await message.react('🔄');
+                            this.listenForRevive(message, channel, playerName, false);
+                        } else {
+                            // Cancelled — restore original auto-banned embed
+                            await confirm.update({ embeds: [embed], components: [row] });
+                            await message.react('🔄');
+                            this.listenForRevive(message, channel, playerName, true);
+                        }
+                    } catch (err) {
+                        await message.edit({ components: [] }).catch(() => {});
+                        await message.react('🔄').catch(() => {});
+                        this.listenForRevive(message, channel, playerName, true);
+                    }
                 }
             } catch (err) {
                 await message.edit({ components: [] }).catch(() => {});
