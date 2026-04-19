@@ -170,11 +170,24 @@ class BotManager extends EventEmitter {
         bot.on('end', (reason) => {
             console.log(`[${botId}] Bot disconnected: ${reason}`);
             const instance = this.botInstances.get(botId);
+            if (!instance || instance.bot !== bot) return;
+
             instance.status = 'offline';
             this.emit('botEnd', botId, reason);
 
-            // Auto-reconnect
-            setTimeout(() => this.reconnect(botId), this.config.settings.reconnectDelay);
+            // Stop periodic tasks immediately so stale intervals stop firing on the dead bot
+            if (instance.intervalId) {
+                clearInterval(instance.intervalId);
+                instance.intervalId = null;
+            }
+
+            // Guard against multiple reconnects being scheduled
+            if (instance.reconnectTimeout) return;
+
+            instance.reconnectTimeout = setTimeout(() => {
+                instance.reconnectTimeout = null;
+                this.reconnect(botId);
+            }, this.config.settings.reconnectDelay);
         });
 
         bot.on('error', (err) => {
@@ -187,6 +200,13 @@ class BotManager extends EventEmitter {
         bot.on('kicked', (reason) => {
             console.log(`[${botId}] Kicked: ${reason}`);
             this.emit('botKicked', botId, reason);
+        });
+
+        bot.on('respawn', () => {
+            if (bot.currentWindow) {
+                console.log(`[${botId}] Respawn detected with open window — force-closing to prevent chat lock`);
+                bot.closeWindow(bot.currentWindow);
+            }
         });
     }
 
@@ -202,11 +222,38 @@ class BotManager extends EventEmitter {
 
         console.log(`[${botId}] Attempting to reconnect...`);
 
-        // Remove old bot
+        const botConfig = instance.config;
+        const oldBot = instance.bot;
+
+        // Clear any pending reconnect timeout and periodic interval
+        if (instance.reconnectTimeout) {
+            clearTimeout(instance.reconnectTimeout);
+            instance.reconnectTimeout = null;
+        }
+        if (instance.intervalId) {
+            clearInterval(instance.intervalId);
+            instance.intervalId = null;
+        }
+
+        // Detach listeners and force-close the old bot to release sockets/resources
+        if (oldBot) {
+            try {
+                oldBot.removeAllListeners();
+                if (oldBot._client) {
+                    oldBot._client.removeAllListeners();
+                }
+                oldBot.end();
+            } catch (err) {
+                console.error(`[${botId}] Error cleaning up old bot:`, err.message);
+            }
+        }
+
+        // Remove old bot/instance references so createBot starts fresh
         this.bots.delete(botId);
+        this.botInstances.delete(botId);
 
         // Create new bot with same config
-        this.createBot(instance.config);
+        this.createBot(botConfig);
     }
 
     /**
@@ -304,9 +351,19 @@ class BotManager extends EventEmitter {
 
         if (instance.intervalId) {
             clearInterval(instance.intervalId);
+            instance.intervalId = null;
+        }
+        if (instance.reconnectTimeout) {
+            clearTimeout(instance.reconnectTimeout);
+            instance.reconnectTimeout = null;
         }
 
-        instance.bot.quit();
+        try {
+            instance.bot.removeAllListeners();
+            instance.bot.quit();
+        } catch (err) {
+            console.error(`[${botId}] Error stopping bot:`, err.message);
+        }
         this.bots.delete(botId);
         this.botInstances.delete(botId);
 

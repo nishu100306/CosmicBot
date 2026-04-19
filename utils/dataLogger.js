@@ -39,7 +39,7 @@ class DataLogger {
             })
 
             // Open the /is top menu
-            
+
             let count = 0;
             while (await bot.currentWindow === null && count < 10) {
                 await bot.chat('/is top');
@@ -62,7 +62,7 @@ class DataLogger {
                     topArr[i] = bot.currentWindow.containerItems()[slots[i]];
                 }
 
-                
+
 
                 // Parse and save top data
                 for (let i = 0; i < 10; i++) {
@@ -87,23 +87,30 @@ class DataLogger {
                     const record = new TopRecord(league, leader, level, position, trophies, timestamp);
                     await fsp.appendFile(this.islandDataFile, record.toString() + '\n');
                 }
-                
+
                 //Click "Back to top islands" button
                 await bot.clickWindow(26, 0, 0)
                 await wait(shortPause);
-                
-                
+
+
             }
-            await bot.closeWindow(bot.currentWindow);
             await fsp.appendFile(this.islandDataFile, "", {flish: true});
             console.log(`[DataLogger] Logged top data at ${new Date().toLocaleString()}`);
             // Log island XP data
-            // await this.logIslandXP(bot, shortPause);  
+            // await this.logIslandXP(bot, shortPause);
             return true;
 
         } catch (err) {
             console.error('[DataLogger] Error logging top data:', err);
             return false;
+        } finally {
+            if (bot.currentWindow) {
+                try {
+                    bot.closeWindow(bot.currentWindow);
+                } catch (err) {
+                    console.error('[DataLogger] Error closing window in finally:', err.message);
+                }
+            }
         }
     }
 
@@ -146,11 +153,18 @@ class DataLogger {
                 }
             }
 
-            bot.closeWindow(bot.currentWindow);
             return true;
         } catch (err) {
             console.error('[DataLogger] Error logging island XP:', err);
             return false;
+        } finally {
+            if (bot.currentWindow) {
+                try {
+                    bot.closeWindow(bot.currentWindow);
+                } catch (err) {
+                    console.error('[DataLogger] Error closing window in finally:', err.message);
+                }
+            }
         }
     }
 

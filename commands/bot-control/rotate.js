@@ -53,39 +53,49 @@ module.exports = {
         const username = interaction.options.getString('username');
         const names = await getOnlinePlayers(bot);
 
-        await bot.chat('/is members');
-        await wait(1000);
-        let windowTitle = bot.currentWindow.title.value;
-        let currPlayers = parseInt(windowTitle.substring(windowTitle.indexOf("(") + 1, windowTitle.lastIndexOf(" /")).trim());
-        let maxPlayers = parseInt(windowTitle.substring(windowTitle.indexOf("/ ") + 1, windowTitle.lastIndexOf(")")).trim());
+        let currPlayers;
+        let maxPlayers;
         const members = new Array(10);
-        for (let i = 0; i < 24; i++) {
-            members[i] = bot.currentWindow.containerItems()[i];
-            if (members[i] == null || members[i].customLore == null) {
-                break;
+        try {
+            await bot.chat('/is members');
+            await wait(1000);
+            let windowTitle = bot.currentWindow.title.value;
+            currPlayers = parseInt(windowTitle.substring(windowTitle.indexOf("(") + 1, windowTitle.lastIndexOf(" /")).trim());
+            maxPlayers = parseInt(windowTitle.substring(windowTitle.indexOf("/ ") + 1, windowTitle.lastIndexOf(")")).trim());
+            for (let i = 0; i < 24; i++) {
+                members[i] = bot.currentWindow.containerItems()[i];
+                if (members[i] == null || members[i].customLore == null) {
+                    break;
+                }
+                const lore = members[i].customLore.toString();
+                        let json = JSON.parse('[' + lore + ']');
+                        const loreText = json.filter(x => x)
+                            .map(x => x.extra.map(y => y.text).filter(z => z).join(''))
+                            .join('\n')
+                            .split('+')[0];
+                const nameLore = members[i].customName.toString();
+                    json = JSON.parse('[' + nameLore + ']');
+                    const memberName = json.filter(x => x)
+                            .map(x => x.extra.map(y => y.text).filter(z => z).join(''))
+                            .join('\n')
+                            .split('+')[0];
+                if (memberName.startsWith('Default Member Rank')) {
+                    members.splice(i);
+                    break;
+                }
+                members[i] = memberName + '\n' + loreText;
+
             }
-            const lore = members[i].customLore.toString();
-                    let json = JSON.parse('[' + lore + ']');
-                    const loreText = json.filter(x => x)
-                        .map(x => x.extra.map(y => y.text).filter(z => z).join(''))
-                        .join('\n')
-                        .split('+')[0];
-            const nameLore = members[i].customName.toString();
-                json = JSON.parse('[' + nameLore + ']');
-                const memberName = json.filter(x => x)
-                        .map(x => x.extra.map(y => y.text).filter(z => z).join(''))
-                        .join('\n')
-                        .split('+')[0];
-            if (memberName.startsWith('Default Member Rank')) {
-                members.splice(i);
-                break;
+        } finally {
+            if (bot.currentWindow) {
+                try {
+                    bot.closeWindow(bot.currentWindow);
+                } catch (err) {
+                    console.error('[/rotate] Error closing window in finally:', err.message);
+                }
             }
-            members[i] = memberName + '\n' + loreText;
-            
         }
-        
-        await bot.closeWindow(bot.currentWindow);
-        
+
 
         let onlinePlayers = new Array();
         for (let i = 0; i < names.length; i++) {

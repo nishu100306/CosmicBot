@@ -74,48 +74,56 @@ module.exports = {
 
             const wait = require('node:timers/promises').setTimeout;
             const shortPause = config.settings.shortPause;
-            
+
             await bot.chat('/top');
             await wait(shortPause);
 
-            if (selection.customId === 'Island XP') {
-                await bot.clickWindow(2, 0, 0);
-                await wait(shortPause);
-                await handleIslandExp(bot, selection);
-                bot.closeWindow(bot.currentWindow);
-            } else if (selection.customId === 'Island Top') {
-                await bot.clickWindow(22, 0, 0);
-                await wait(shortPause);
+            try {
+                if (selection.customId === 'Island XP') {
+                    await bot.clickWindow(2, 0, 0);
+                    await wait(shortPause);
+                    await handleIslandExp(bot, selection);
+                } else if (selection.customId === 'Island Top') {
+                    await bot.clickWindow(22, 0, 0);
+                    await wait(shortPause);
 
-                // Show league selection buttons
-                const LEAGUES = { 'Recruit': 11, 'Steel': 12, 'Titanium': 13, 'Neon': 14, 'Celestium': 15 };
+                    // Show league selection buttons
+                    const LEAGUES = { 'Recruit': 11, 'Steel': 12, 'Titanium': 13, 'Neon': 14, 'Celestium': 15 };
 
-                const leagueRow = new ActionRowBuilder().addComponents(
-                    ...Object.keys(LEAGUES).map(name =>
-                        new ButtonBuilder()
-                            .setCustomId(`league_${name}`)
-                            .setLabel(name)
-                            .setStyle(ButtonStyle.Secondary)
-                    )
-                );
+                    const leagueRow = new ActionRowBuilder().addComponents(
+                        ...Object.keys(LEAGUES).map(name =>
+                            new ButtonBuilder()
+                                .setCustomId(`league_${name}`)
+                                .setLabel(name)
+                                .setStyle(ButtonStyle.Secondary)
+                        )
+                    );
 
-                await selection.update({
-                    content: 'Select a league',
-                    components: [leagueRow],
-                });
+                    await selection.update({
+                        content: 'Select a league',
+                        components: [leagueRow],
+                    });
 
-                const leagueSelection = await selection.message.awaitMessageComponent({
-                    filter: collectorFilter,
-                    time: 60_000
-                });
+                    const leagueSelection = await selection.message.awaitMessageComponent({
+                        filter: collectorFilter,
+                        time: 60_000
+                    });
 
-                const leagueName = leagueSelection.customId.replace('league_', '');
-                const leagueSlot = LEAGUES[leagueName];
+                    const leagueName = leagueSelection.customId.replace('league_', '');
+                    const leagueSlot = LEAGUES[leagueName];
 
-                await bot.clickWindow(leagueSlot, 0, 0);
-                await wait(shortPause);
-                await handleIslandTop(bot, leagueSelection, leagueName);
-                bot.closeWindow(bot.currentWindow);
+                    await bot.clickWindow(leagueSlot, 0, 0);
+                    await wait(shortPause);
+                    await handleIslandTop(bot, leagueSelection, leagueName);
+                }
+            } finally {
+                if (bot.currentWindow) {
+                    try {
+                        bot.closeWindow(bot.currentWindow);
+                    } catch (err) {
+                        console.error('[/top] Error closing window in finally:', err.message);
+                    }
+                }
             }
 
         } catch (error) {
