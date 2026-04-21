@@ -139,12 +139,36 @@ class BotManager extends EventEmitter {
      * Bind event handlers to a bot
      */
     bindEvents(botId, bot, botConfig) {
+        // Raise the listener cap — mineflayer re-attaches configuration-phase handlers
+        // on each handshake cycle, and some servers trigger multiple cycles per bot.
+        // The login-loop detector will force a reconnect before real leaks occur.
+        bot._client.setMaxListeners(50);
+
         bot.on('start', () => {
             console.log(`[${botId}] Bot started (start event)`)
         });
 
         bot.on('login', () => {
-            console.log(`[${botId}] Bot login event fired`);
+            const instance = this.botInstances.get(botId);
+            if (!instance || instance.bot !== bot) return;
+
+            const now = Date.now();
+            instance.loginTimestamps = (instance.loginTimestamps || []).filter(t => now - t < 10000);
+            instance.loginTimestamps.push(now);
+
+            // Rate-limit the log to avoid spamming Discord when stuck in a loop
+            if (instance.loginTimestamps.length <= 3) {
+                console.log(`[${botId}] Bot login event fired (dim: ${bot.game?.dimension})`);
+            } else if (instance.loginTimestamps.length === 4) {
+                console.log(`[${botId}] Bot login event firing rapidly — suppressing further logs`);
+            }
+
+            // Detect login-loop: 10+ logins in 10s means the bot is stuck being re-logged by the server
+            if (instance.loginTimestamps.length >= 10 && !instance.loginLoopDetected) {
+                instance.loginLoopDetected = true;
+                console.error(`[${botId}] Login loop detected (${instance.loginTimestamps.length} logins in 10s) — forcing reconnect`);
+                this.reconnect(botId);
+            }
         });
 
         bot._client.on('connect', () => {
