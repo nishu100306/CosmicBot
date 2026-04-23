@@ -11,6 +11,7 @@ class BotManager extends EventEmitter {
         this.config = config;
         this.bots = new Map();
         this.botInstances = new Map();
+        this.stoppedBots = new Set();
     }
 
     /**
@@ -30,6 +31,11 @@ class BotManager extends EventEmitter {
      * Create a single bot instance
      */
     createBot(botConfig) {
+        if (this.stoppedBots.has(botConfig.id)) {
+            console.log(`[${botConfig.id}] Refusing to create bot — it was stopped. Use /startbot to restart.`);
+            return null;
+        }
+
         if (this.bots.has(botConfig.id)) {
             console.log(`Bot ${botConfig.id} already exists`);
             return this.bots.get(botConfig.id);
@@ -370,8 +376,14 @@ class BotManager extends EventEmitter {
      * Stop a bot
      */
     stopBot(botId) {
+        // Mark as stopped first so any in-flight reconnect path refuses to recreate it
+        this.stoppedBots.add(botId);
+
         const instance = this.botInstances.get(botId);
-        if (!instance) return false;
+        if (!instance) {
+            console.log(`[${botId}] Bot marked as stopped (was not running)`);
+            return true;
+        }
 
         if (instance.intervalId) {
             clearInterval(instance.intervalId);
@@ -384,6 +396,9 @@ class BotManager extends EventEmitter {
 
         try {
             instance.bot.removeAllListeners();
+            if (instance.bot._client) {
+                instance.bot._client.removeAllListeners();
+            }
             instance.bot.quit();
         } catch (err) {
             console.error(`[${botId}] Error stopping bot:`, err.message);

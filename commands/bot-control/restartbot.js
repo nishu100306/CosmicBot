@@ -31,6 +31,9 @@ module.exports = {
             await new Promise(resolve => setTimeout(resolve, 1000)); // Wait a bit
         }
 
+        // Clear the stopped flag (stopBot sets it; restart should override)
+        botManager.stoppedBots.delete(botId);
+
         // Start bot with new config
         try {
             botManager.createBot(config);

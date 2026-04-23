@@ -34,6 +34,9 @@ module.exports = {
             return;
         }
 
+        // Clear the stopped flag so the bot can be recreated
+        botManager.stoppedBots.delete(botId);
+
         // Start bot
         try {
             botManager.createBot(config);
