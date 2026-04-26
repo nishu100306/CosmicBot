@@ -5,6 +5,8 @@ const BotManager = require('./bots/BotManager');
 const DataLogger = require('./utils/dataLogger');
 const BotConfigManager = require('./utils/botConfigManager');
 const PlayerTracker = require('./utils/playerTracker');
+const PlaytimeTracker = require('./utils/playtimeTracker');
+const ReminderManager = require('./utils/reminderManager');
 
 // Load main configuration
 let config;
@@ -186,6 +188,16 @@ client.once(Events.ClientReady, async (c) => {
     if (config.settings.trackPlayers?.enabled) {
         await global.playerTracker.start();
     }
+
+    // Start playtime tracker if configured
+    global.playtimeTracker = new PlaytimeTracker(config, botManager);
+    if (config.settings.playtimeTracker?.enabled) {
+        await global.playtimeTracker.start();
+    }
+
+    // Load and schedule persisted reminders
+    global.reminderManager = new ReminderManager(config, client);
+    await global.reminderManager.start();
 });
 
 // Handle Discord slash commands

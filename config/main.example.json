@@ -22,6 +22,10 @@
       "intervalMinutes": 60,
       "timeframe": 1,
       "limit": 10
+    },
+    "playtimeTracker": {
+      "enabled": false,
+      "intervalMs": 60000
     }
   },
   "appearance": {
