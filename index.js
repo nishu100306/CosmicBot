@@ -78,6 +78,7 @@ async function flushLogBuffer() {
 
 function queueLogMessage(args) {
     const text = args.map(a => typeof a === 'string' ? a : JSON.stringify(a, null, 2)).join(' ');
+    if (logBuffer.length > 500) logBuffer = logBuffer.slice(-250);
     logBuffer.push(text);
 
     if (!flushTimeout) {
@@ -98,6 +99,21 @@ console.error = (...args) => {
     originalError(...args);
     queueLogMessage(['[ERROR]', ...args]);
 };
+
+// Surface silent failures straight to stdout (bypasses Discord log pipeline)
+process.on('unhandledRejection', (reason) => {
+    originalError('[UNHANDLED REJECTION]', reason);
+});
+
+process.on('uncaughtException', (err) => {
+    originalError('[UNCAUGHT EXCEPTION]', err);
+});
+
+// Periodic health log so we can correlate hangs with memory growth
+setInterval(() => {
+    const mem = process.memoryUsage();
+    originalLog(`[health] rss=${Math.round(mem.rss / 1024 / 1024)}MB heap=${Math.round(mem.heapUsed / 1024 / 1024)}/${Math.round(mem.heapTotal / 1024 / 1024)}MB logBufferLen=${logBuffer.length} discordReady=${client.isReady()}`);
+}, 60_000);
 
 // Auto leaderboard posting
 const buildLeaderboardEmbed = require('./utils/leaderboardBuilder');
