@@ -4,6 +4,7 @@ const EventEmitter = require('events');
 const fs = require('fs');
 const path = require('path');
 const socks = require('socks').SocksClient
+const BotQueue = require('../utils/BotQueue');
 
 class BotManager extends EventEmitter {
     constructor(config) {
@@ -129,16 +130,37 @@ class BotManager extends EventEmitter {
         }
 
         this.bots.set(botConfig.id, bot);
+        const queue = new BotQueue(botConfig.id, () => this.bots.get(botConfig.id));
         this.botInstances.set(botConfig.id, {
             config: botConfig,
             bot: bot,
             status: 'connecting',
-            lastError: null
+            lastError: null,
+            queue
         });
 
         this.bindEvents(botConfig.id, bot, botConfig);
 
         return bot;
+    }
+
+    /**
+     * Get the BotQueue for a bot id (or null if not found).
+     */
+    getQueue(botId) {
+        const instance = this.botInstances.get(botId);
+        return instance ? instance.queue : null;
+    }
+
+    /**
+     * Snapshot of all per-bot queue depths, used by the heartbeat.
+     */
+    getQueueDepths() {
+        const depths = {};
+        for (const [botId, instance] of this.botInstances) {
+            depths[botId] = instance.queue ? instance.queue.depth : 0;
+        }
+        return depths;
     }
 
     /**
@@ -270,6 +292,11 @@ class BotManager extends EventEmitter {
         const botConfig = instance.config;
         const oldBot = instance.bot;
 
+        // Drain any queued ops on the old bot so callers get a clean rejection
+        if (instance.queue) {
+            instance.queue.drain('bot reconnecting');
+        }
+
         // Clear any pending reconnect timeout and periodic interval
         if (instance.reconnectTimeout) {
             clearTimeout(instance.reconnectTimeout);
@@ -308,41 +335,44 @@ class BotManager extends EventEmitter {
         const instance = this.botInstances.get(botId);
         if (!instance || !instance.config.periodicTasks?.enabled) return;
 
-        const bot = instance.bot;
         const config = instance.config.periodicTasks;
+        const queue = instance.queue;
+        const shortPause = this.config.settings.shortPause;
         let cycleCount = 0;
 
         const executePeriodicTasks = async () => {
-            try {
-                if (instance.status !== 'online') return;
+            if (instance.status !== 'online') return;
 
-                const wait = require('node:timers/promises').setTimeout;
-                const shortPause = this.config.settings.shortPause;
-
-                // Execute configured commands
-                for (const command of config.commands || []) {
+            for (const command of config.commands || []) {
+                const result = await queue.enqueue(`periodic:${command}`, async (bot) => {
+                    const wait = require('node:timers/promises').setTimeout;
                     await wait(shortPause);
                     bot.chat(command);
-                }
+                    await wait(shortPause);
+                }, { priority: BotQueue.PRIORITY.NORMAL, timeoutMs: 30_000 });
 
-                // Log top data every N cycles
-                if (config.logTopEveryNCycles && cycleCount % config.logTopEveryNCycles === 0) {
-                    this.emit('topLogRequest', botId, bot);
+                if (!result.ok) {
+                    console.error(`[${botId}] periodic task '${command}' failed: ${result.reason} - ${result.error?.message || result.error}`);
                 }
-
-                cycleCount++;
-            } catch (err) {
-                console.error(`[${botId}] Error in periodic tasks:`, err);
             }
+
+            // Log top data every N cycles
+            if (config.logTopEveryNCycles && cycleCount % config.logTopEveryNCycles === 0) {
+                this.emit('topLogRequest', botId, instance.bot);
+            }
+
+            cycleCount++;
         };
 
-        // Clear existing interval if any
         if (instance.intervalId) {
             clearInterval(instance.intervalId);
         }
 
-        // Start new interval
-        instance.intervalId = setInterval(executePeriodicTasks, config.interval);
+        instance.intervalId = setInterval(() => {
+            executePeriodicTasks().catch(err => {
+                console.error(`[${botId}] Unexpected error in periodic tasks:`, err.message);
+            });
+        }, config.interval);
         console.log(`[${botId}] Periodic tasks started (interval: ${config.interval}ms)`);
     }
 
@@ -407,6 +437,9 @@ class BotManager extends EventEmitter {
         if (instance.reconnectTimeout) {
             clearTimeout(instance.reconnectTimeout);
             instance.reconnectTimeout = null;
+        }
+        if (instance.queue) {
+            instance.queue.drain('bot stopped');
         }
 
         try {

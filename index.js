@@ -1,5 +1,6 @@
 const fs = require('node:fs');
 const path = require('node:path');
+const { Worker } = require('node:worker_threads');
 const { Client, GatewayIntentBits, Collection, Events, MessageFlags } = require('discord.js');
 const BotManager = require('./bots/BotManager');
 const DataLogger = require('./utils/dataLogger');
@@ -50,54 +51,55 @@ global.saveConfig = () => {
     fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
 };
 
-// Intercept console output and forward to Discord channel
+// ───── Logging: write to stdout immediately, ship to Discord via worker ─────
 const originalLog = console.log.bind(console);
 const originalError = console.error.bind(console);
-let logBuffer = [];
-let flushTimeout = null;
 
-async function flushLogBuffer() {
-    flushTimeout = null;
+const logWorker = new Worker(path.join(__dirname, 'utils', 'logWorker.js'));
 
-    if (logBuffer.length === 0 || !global.logChannelId || !client.isReady()) {
-        return;
-    }
-
-    const message = logBuffer.join('\n').slice(0, 1900);
-    logBuffer = [];
-
+logWorker.on('message', async (msg) => {
+    if (msg.type !== 'send') return;
+    if (!global.logChannelId || !client.isReady()) return;
     try {
         const channel = await client.channels.fetch(global.logChannelId);
         if (channel && channel.isTextBased()) {
-            await channel.send('```\n' + message + '\n```');
+            await channel.send('```\n' + msg.message + '\n```');
         }
     } catch (err) {
-        originalLog('[flushLogBuffer] Error sending to Discord:', err.message);
+        originalLog('[logWorker] Discord send failed:', err.message);
     }
-}
+});
 
-function queueLogMessage(args) {
-    const text = args.map(a => typeof a === 'string' ? a : JSON.stringify(a, null, 2)).join(' ');
-    if (logBuffer.length > 500) logBuffer = logBuffer.slice(-250);
-    logBuffer.push(text);
+logWorker.on('error', (err) => {
+    originalError('[logWorker] worker error:', err);
+});
 
-    if (!flushTimeout) {
-        flushTimeout = setTimeout(() => {
-            flushLogBuffer().catch(err => {
-                originalLog('[flushLogBuffer] Error:', err);
-            });
-        }, 1000);
+logWorker.on('exit', (code) => {
+    if (code !== 0) originalError(`[logWorker] exited with code ${code}`);
+});
+
+function postToLogWorker(args, isError) {
+    try {
+        // Convert anything that won't structured-clone (functions, etc.) to its string form first
+        const safeArgs = args.map(a => {
+            if (typeof a === 'function') return '[Function]';
+            if (typeof a === 'symbol') return a.toString();
+            return a;
+        });
+        logWorker.postMessage({ type: 'log', args: safeArgs, isError });
+    } catch (err) {
+        originalError('[logWorker] postMessage failed:', err.message);
     }
 }
 
 console.log = (...args) => {
     originalLog(...args);
-    queueLogMessage(args);
+    postToLogWorker(args, false);
 };
 
 console.error = (...args) => {
     originalError(...args);
-    queueLogMessage(['[ERROR]', ...args]);
+    postToLogWorker(args, true);
 };
 
 // Surface silent failures straight to stdout (bypasses Discord log pipeline)
@@ -109,11 +111,34 @@ process.on('uncaughtException', (err) => {
     originalError('[UNCAUGHT EXCEPTION]', err);
 });
 
-// Periodic health log so we can correlate hangs with memory growth
+// ───── Heartbeat + watchdog ─────
+// Heartbeat runs every 10s and reports basic health to stdout (PM2-visible, bypasses Discord).
+// Watchdog detects event-loop stalls by measuring drift between expected and actual fire time.
+const HEARTBEAT_INTERVAL_MS = 10_000;
+const STALL_THRESHOLD_MS = 30_000;
+let lastHeartbeat = Date.now();
+
 setInterval(() => {
+    const now = Date.now();
+    const drift = now - lastHeartbeat - HEARTBEAT_INTERVAL_MS;
+    lastHeartbeat = now;
+
     const mem = process.memoryUsage();
-    originalLog(`[health] rss=${Math.round(mem.rss / 1024 / 1024)}MB heap=${Math.round(mem.heapUsed / 1024 / 1024)}/${Math.round(mem.heapTotal / 1024 / 1024)}MB logBufferLen=${logBuffer.length} discordReady=${client.isReady()}`);
-}, 60_000);
+    const queueDepths = botManager.getQueueDepths ? botManager.getQueueDepths() : {};
+    const totalQueueDepth = Object.values(queueDepths).reduce((a, b) => a + b, 0);
+
+    originalLog(
+        `[heartbeat] rss=${Math.round(mem.rss / 1024 / 1024)}MB ` +
+        `heap=${Math.round(mem.heapUsed / 1024 / 1024)}/${Math.round(mem.heapTotal / 1024 / 1024)}MB ` +
+        `discordReady=${client.isReady()} ` +
+        `queueDepth=${totalQueueDepth} ` +
+        `drift=${drift}ms`
+    );
+
+    if (drift > STALL_THRESHOLD_MS) {
+        originalError(`[STALL DETECTED] event loop blocked for ${drift}ms`);
+    }
+}, HEARTBEAT_INTERVAL_MS);
 
 // Auto leaderboard posting
 const buildLeaderboardEmbed = require('./utils/leaderboardBuilder');
@@ -265,7 +290,16 @@ client.on(Events.InteractionCreate, async interaction => {
 // Handle bot manager events
 botManager.on('topLogRequest', async (botId, bot) => {
     console.log(`[${botId}] Top log requested`);
-    await dataLogger.logTopData(bot, config.settings.shortPause);
+    const queue = botManager.getQueue(botId);
+    if (!queue) return;
+    const { PRIORITY } = require('./utils/BotQueue');
+    const result = await queue.enqueue('logTopData', (b) => dataLogger.logTopData(b, config.settings.shortPause), {
+        priority: PRIORITY.LOW,
+        timeoutMs: 180_000
+    });
+    if (!result.ok) {
+        console.error(`[${botId}] logTopData failed: ${result.reason} - ${result.error?.message || result.error}`);
+    }
 });
 
 // Graceful shutdown

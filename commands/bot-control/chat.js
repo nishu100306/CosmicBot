@@ -1,4 +1,5 @@
 const { SlashCommandBuilder } = require('discord.js');
+const { PRIORITY } = require('../../utils/BotQueue');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -21,12 +22,9 @@ module.exports = {
         const message = interaction.options.getString('message');
         const botId = interaction.options.getString('bot') || global.config.settings.defaultBot;
 
-        const bot = botManager.getBot(botId);
-
-        if (!bot) {
-            await interaction.editReply({
-                content: 'No bot available or bot ID not found.'
-            });
+        const queue = botManager.getQueue(botId);
+        if (!queue) {
+            await interaction.editReply({ content: 'No bot available or bot ID not found.' });
             return;
         }
 
@@ -38,15 +36,18 @@ module.exports = {
             return;
         }
 
-        try {
-            bot.chat(message);
+        const result = await queue.enqueue('chat', (bot) => bot.chat(message), {
+            priority: PRIORITY.HIGH,
+            timeoutMs: 10_000
+        });
+
+        if (result.ok) {
             await interaction.editReply({
                 content: `✅ Message sent via bot \`${botId}\`:\n> ${message}`
             });
-        } catch (err) {
-            console.error('Error sending chat message:', err);
+        } else {
             await interaction.editReply({
-                content: 'Failed to send message. Check bot connection.'
+                content: `❌ Chat failed (${result.reason}): ${result.error?.message || result.error}`
             });
         }
     },

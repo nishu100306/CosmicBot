@@ -1,4 +1,5 @@
 const { SlashCommandBuilder, MessageFlags } = require('discord.js');
+const { PRIORITY } = require('../../utils/BotQueue');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -17,9 +18,9 @@ module.exports = {
         const config = global.config;
 
         const botId = interaction.options.getString('bot') || config.settings.defaultBot;
-        const bot = botManager.getBot(botId);
+        const queue = botManager.getQueue(botId);
 
-        if (!bot) {
+        if (!queue) {
             await interaction.editReply({ content: 'No bot available.' });
             return;
         }
@@ -34,12 +35,17 @@ module.exports = {
 
         await interaction.editReply({ content: `Logging /is top data using bot \`${botId}\`...` });
 
-        const success = await dataLogger.logTopData(bot, config.settings.shortPause);
+        const result = await queue.enqueue(
+            'logTopData',
+            (bot) => dataLogger.logTopData(bot, config.settings.shortPause),
+            { priority: PRIORITY.HIGH, timeoutMs: 180_000 }
+        );
 
-        if (success) {
+        if (result.ok && result.value) {
             await interaction.editReply({ content: `Successfully logged /is top data using bot \`${botId}\`.` });
         } else {
-            await interaction.editReply({ content: `Failed to log /is top data. Check console for errors.` });
+            const errMsg = result.ok ? 'logTopData returned false' : `${result.reason}: ${result.error?.message || result.error}`;
+            await interaction.editReply({ content: `Failed to log /is top data: ${errMsg}` });
         }
     },
 };
