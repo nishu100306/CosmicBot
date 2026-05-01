@@ -172,6 +172,17 @@ class BotManager extends EventEmitter {
             // Detect login-loop: 10+ logins in 10s means the bot is stuck being re-logged by the server
             if (instance.loginTimestamps.length >= 10 && !instance.loginLoopDetected) {
                 instance.loginLoopDetected = true;
+
+                // Cooldown: don't thrash reconnects if the loop keeps coming back. After a login-loop
+                // reconnect, wait 2 min before allowing another one for this bot.
+                const lastLoopReconnect = instance.lastLoopReconnect || 0;
+                const cooldownMs = 2 * 60 * 1000;
+                if (now - lastLoopReconnect < cooldownMs) {
+                    console.error(`[${botId}] Login loop detected — within 2min cooldown, suppressing reconnect`);
+                    return;
+                }
+                instance.lastLoopReconnect = now;
+
                 console.error(`[${botId}] Login loop detected (${instance.loginTimestamps.length} logins in 10s) — forcing reconnect`);
                 this.reconnect(botId);
             }
