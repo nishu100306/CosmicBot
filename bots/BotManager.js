@@ -214,10 +214,14 @@ class BotManager extends EventEmitter {
             // Guard against multiple reconnects being scheduled
             if (instance.reconnectTimeout) return;
 
+            // Add jitter so multiple bots disconnecting together don't all reconnect at the same instant
+            const jitter = Math.floor(Math.random() * 30000);
+            const delay = this.config.settings.reconnectDelay + jitter;
+
             instance.reconnectTimeout = setTimeout(() => {
                 instance.reconnectTimeout = null;
                 this.reconnect(botId);
-            }, this.config.settings.reconnectDelay);
+            }, delay);
         });
 
         bot.on('error', (err) => {

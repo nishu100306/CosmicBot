@@ -188,11 +188,17 @@ client.once(Events.ClientReady, async (c) => {
 
     console.log(`Found ${botConfigs.length} bot configuration(s), ${enabledBots.length} enabled`);
 
-    for (const botConfig of enabledBots) {
+    // Stagger bot startup to avoid the server's "logging in too fast" rate limit
+    const startupDelayMs = 8000;
+    for (let i = 0; i < enabledBots.length; i++) {
+        const botConfig = enabledBots[i];
         try {
             botManager.createBot(botConfig);
         } catch (err) {
             console.error(`Failed to start bot ${botConfig.id}:`, err.message);
+        }
+        if (i < enabledBots.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, startupDelayMs));
         }
     }
 
