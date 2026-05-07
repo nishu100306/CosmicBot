@@ -288,6 +288,37 @@ client.on(Events.InteractionCreate, async interaction => {
 });
 
 // Handle bot manager events
+// ───── Chat log forwarding (one batch per bot per second) ─────
+const chatLogBuffers = new Map(); // botId -> { channelId, lines: [], timer }
+
+botManager.on('botChat', (botId, channelId, msg) => {
+    let entry = chatLogBuffers.get(botId);
+    if (!entry || entry.channelId !== channelId) {
+        // Channel changed (or first time) — flush old buffer if needed
+        if (entry && entry.timer) clearTimeout(entry.timer);
+        entry = { channelId, lines: [], timer: null };
+        chatLogBuffers.set(botId, entry);
+    }
+    entry.lines.push(msg);
+
+    if (!entry.timer) {
+        entry.timer = setTimeout(async () => {
+            entry.timer = null;
+            const lines = entry.lines.splice(0, entry.lines.length);
+            if (lines.length === 0 || !client.isReady()) return;
+            const content = '```\n' + lines.join('\n').slice(0, 1900) + '\n```';
+            try {
+                const channel = await client.channels.fetch(entry.channelId);
+                if (channel && channel.isTextBased()) {
+                    await channel.send({ content, allowedMentions: { parse: [] } });
+                }
+            } catch (err) {
+                originalLog(`[chatLog:${botId}] send failed:`, err.message);
+            }
+        }, 1000);
+    }
+});
+
 botManager.on('topLogRequest', async (botId, bot) => {
     console.log(`[${botId}] Top log requested`);
     const queue = botManager.getQueue(botId);

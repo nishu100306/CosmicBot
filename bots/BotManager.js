@@ -275,6 +275,12 @@ class BotManager extends EventEmitter {
                 bot.closeWindow(bot.currentWindow);
             }
         });
+
+        bot.on('messagestr', (msg) => {
+            const instance = this.botInstances.get(botId);
+            if (!instance || !instance.config.chatLogChannelId) return;
+            this.emit('botChat', botId, instance.config.chatLogChannelId, msg);
+        });
     }
 
     /**
