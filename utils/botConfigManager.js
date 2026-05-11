@@ -17,6 +17,24 @@ class BotConfigManager {
         }
     }
 
+    static normalizeId(id) {
+        return typeof id === 'string' ? id.toLowerCase().trim() : id;
+    }
+
+    /**
+     * Find the actual filename for a botId, matching case-insensitively.
+     * Returns the basename (e.g. "bot1.json") or null.
+     */
+    async _findConfigFile(botId) {
+        const target = BotConfigManager.normalizeId(botId) + '.json';
+        try {
+            const files = await fsp.readdir(this.botsConfigPath);
+            return files.find(f => f.toLowerCase() === target) || null;
+        } catch (err) {
+            return null;
+        }
+    }
+
     /**
      * Load all bot configurations
      */
@@ -31,6 +49,7 @@ class BotConfigManager {
                     const filePath = path.join(this.botsConfigPath, file);
                     const content = await fsp.readFile(filePath, 'utf8');
                     const config = JSON.parse(content);
+                    if (config.id) config.id = BotConfigManager.normalizeId(config.id);
                     configs.push(config);
                 } catch (err) {
                     console.error(`Error loading bot config ${file}:`, err.message);
@@ -45,25 +64,36 @@ class BotConfigManager {
     }
 
     /**
-     * Load a single bot configuration by ID
+     * Load a single bot configuration by ID (case-insensitive)
      */
     async loadConfig(botId) {
         try {
-            const filePath = path.join(this.botsConfigPath, `${botId}.json`);
+            const file = await this._findConfigFile(botId);
+            if (!file) return null;
+            const filePath = path.join(this.botsConfigPath, file);
             const content = await fsp.readFile(filePath, 'utf8');
-            return JSON.parse(content);
+            const parsed = JSON.parse(content);
+            if (parsed.id) parsed.id = BotConfigManager.normalizeId(parsed.id);
+            return parsed;
         } catch (err) {
             return null;
         }
     }
 
     /**
-     * Save a bot configuration
+     * Save a bot configuration. Filename is always lowercase.
      */
     async saveConfig(botConfig) {
         try {
             if (!botConfig.id) {
                 throw new Error('Bot config must have an id');
+            }
+            botConfig.id = BotConfigManager.normalizeId(botConfig.id);
+
+            // If a differently-cased file exists, remove it so we don't end up with two
+            const existing = await this._findConfigFile(botConfig.id);
+            if (existing && existing !== `${botConfig.id}.json`) {
+                await fsp.unlink(path.join(this.botsConfigPath, existing)).catch(() => {});
             }
 
             const filePath = path.join(this.botsConfigPath, `${botConfig.id}.json`);
@@ -76,18 +106,13 @@ class BotConfigManager {
     }
 
     /**
-     * Delete a bot configuration
+     * Delete a bot configuration (case-insensitive)
      */
     async deleteConfig(botId) {
         try {
-            const filePath = path.join(this.botsConfigPath, `${botId}.json`);
-
-            // Check if file exists
-            if (!fs.existsSync(filePath)) {
-                return false;
-            }
-
-            await fsp.unlink(filePath);
+            const file = await this._findConfigFile(botId);
+            if (!file) return false;
+            await fsp.unlink(path.join(this.botsConfigPath, file));
             return true;
         } catch (err) {
             console.error('Error deleting bot config:', err);
@@ -96,22 +121,22 @@ class BotConfigManager {
     }
 
     /**
-     * Check if a bot config exists
+     * Check if a bot config exists (case-insensitive)
      */
     async configExists(botId) {
-        const filePath = path.join(this.botsConfigPath, `${botId}.json`);
-        return fs.existsSync(filePath);
+        const file = await this._findConfigFile(botId);
+        return !!file;
     }
 
     /**
-     * List all bot IDs
+     * List all bot IDs (always lowercase)
      */
     async listBotIds() {
         try {
             const files = await fsp.readdir(this.botsConfigPath);
             return files
                 .filter(f => f.endsWith('.json') && !f.endsWith('.example.json'))
-                .map(f => f.replace('.json', ''));
+                .map(f => BotConfigManager.normalizeId(f.replace('.json', '')));
         } catch (err) {
             console.error('Error listing bot IDs:', err);
             return [];

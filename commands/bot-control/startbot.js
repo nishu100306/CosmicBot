@@ -14,8 +14,9 @@ module.exports = {
 
         const botConfigManager = global.botConfigManager;
         const botManager = global.botManager;
+        const BotManager = require('../../bots/BotManager');
 
-        const botId = interaction.options.getString('id');
+        const botId = BotManager.normalizeId(interaction.options.getString('id'));
 
         // Check if bot is already running
         if (botManager.getBot(botId)) {

@@ -16,6 +16,13 @@ class BotManager extends EventEmitter {
     }
 
     /**
+     * Normalize a bot ID for case-insensitive lookups.
+     */
+    static normalizeId(id) {
+        return typeof id === 'string' ? id.toLowerCase().trim() : id;
+    }
+
+    /**
      * Initialize all enabled bots from config
      */
     initializeBots() {
@@ -32,6 +39,9 @@ class BotManager extends EventEmitter {
      * Create a single bot instance
      */
     createBot(botConfig) {
+        // Normalize the id so all internal lookups use the same form
+        botConfig.id = BotManager.normalizeId(botConfig.id);
+
         if (this.stoppedBots.has(botConfig.id)) {
             console.log(`[${botConfig.id}] Refusing to create bot — it was stopped. Use /startbot to restart.`);
             return null;
@@ -148,7 +158,7 @@ class BotManager extends EventEmitter {
      * Get the BotQueue for a bot id (or null if not found).
      */
     getQueue(botId) {
-        const instance = this.botInstances.get(botId);
+        const instance = this.botInstances.get(BotManager.normalizeId(botId));
         return instance ? instance.queue : null;
     }
 
@@ -287,6 +297,7 @@ class BotManager extends EventEmitter {
      * Reconnect a bot
      */
     reconnect(botId) {
+        botId = BotManager.normalizeId(botId);
         const instance = this.botInstances.get(botId);
         if (!instance) {
             console.error(`[${botId}] Bot instance not found for reconnect`);
@@ -338,6 +349,7 @@ class BotManager extends EventEmitter {
      * Start periodic tasks for a bot
      */
     startPeriodicTasks(botId) {
+        botId = BotManager.normalizeId(botId);
         const instance = this.botInstances.get(botId);
         if (!instance || !instance.config.periodicTasks?.enabled) return;
 
@@ -386,7 +398,7 @@ class BotManager extends EventEmitter {
      * Get a bot by ID
      */
     getBot(botId) {
-        return this.bots.get(botId);
+        return this.bots.get(BotManager.normalizeId(botId));
     }
 
     /**
@@ -400,6 +412,7 @@ class BotManager extends EventEmitter {
      * Get bot status information
      */
     getBotStatus(botId) {
+        botId = BotManager.normalizeId(botId);
         const instance = this.botInstances.get(botId);
         if (!instance) return null;
 
@@ -427,6 +440,7 @@ class BotManager extends EventEmitter {
      * Stop a bot
      */
     stopBot(botId) {
+        botId = BotManager.normalizeId(botId);
         // Mark as stopped first so any in-flight reconnect path refuses to recreate it
         this.stoppedBots.add(botId);
 

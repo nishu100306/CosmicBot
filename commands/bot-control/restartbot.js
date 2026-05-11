@@ -14,7 +14,8 @@ module.exports = {
 
         const botConfigManager = global.botConfigManager;
         const botManager = global.botManager;
-        const botId = interaction.options.getString('id');
+        const BotManager = require('../../bots/BotManager');
+        const botId = BotManager.normalizeId(interaction.options.getString('id'));
 
         // Load configuration
         const config = await botConfigManager.loadConfig(botId);

@@ -17,7 +17,8 @@ module.exports = {
 
         const botManager = global.botManager;
         const botConfigManager = global.botConfigManager;
-        const botId = interaction.options.getString('bot');
+        const BotManager = require('../../bots/BotManager');
+        const botId = BotManager.normalizeId(interaction.options.getString('bot'));
         const disable = interaction.options.getBoolean('disable') || false;
 
         const config = await botConfigManager.loadConfig(botId);
