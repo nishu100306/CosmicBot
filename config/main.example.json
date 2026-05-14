@@ -16,13 +16,7 @@
       "intervalMs": 10000
     },
     "dimensionBlacklist": [],
-    "autoLeaderboard": {
-      "enabled": false,
-      "channelId": null,
-      "intervalMinutes": 60,
-      "timeframe": 1,
-      "limit": 10
-    },
+    "autoLeaderboards": [],
     "playtimeTracker": {
       "enabled": false,
       "intervalMs": 60000

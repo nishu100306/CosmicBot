@@ -140,42 +140,63 @@ setInterval(() => {
     }
 }, HEARTBEAT_INTERVAL_MS);
 
-// Auto leaderboard posting
+// Auto leaderboard posting (multiple channels, each with its own settings)
 const buildLeaderboardEmbed = require('./utils/leaderboardBuilder');
 
-global.autoLeaderboardInterval = null;
-
-global.startAutoLeaderboard = () => {
-    global.stopAutoLeaderboard();
-
-    const alConfig = config.settings.autoLeaderboard;
-    if (!alConfig?.enabled || !alConfig.channelId) return;
-
-    const intervalMs = alConfig.intervalMinutes * 60 * 1000;
-
-    global.autoLeaderboardInterval = setInterval(async () => {
-        try {
-            const channel = await client.channels.fetch(alConfig.channelId);
-            if (!channel || !channel.isTextBased()) return;
-
-            const embed = await buildLeaderboardEmbed(dataLogger, alConfig.timeframe, alConfig.limit);
-            if (embed) {
-                await channel.send({ embeds: [embed] });
-            }
-        } catch (err) {
-            console.error('[AutoLeaderboard] Error posting leaderboard:', err.message);
+// One-time migration: convert legacy singular autoLeaderboard config to the array form
+(() => {
+    const legacy = config.settings.autoLeaderboard;
+    if (legacy && !config.settings.autoLeaderboards) {
+        config.settings.autoLeaderboards = [];
+        if (legacy.enabled && legacy.channelId) {
+            config.settings.autoLeaderboards.push({
+                channelId: legacy.channelId,
+                intervalMinutes: legacy.intervalMinutes || 60,
+                timeframe: legacy.timeframe || 1,
+                limit: legacy.limit || 10
+            });
         }
-    }, intervalMs);
+        delete config.settings.autoLeaderboard;
+        global.saveConfig();
+        console.log('[AutoLeaderboard] Migrated legacy config to autoLeaderboards array');
+    }
+    if (!config.settings.autoLeaderboards) config.settings.autoLeaderboards = [];
+})();
 
-    console.log(`[AutoLeaderboard] Started — posting every ${alConfig.intervalMinutes} min to channel ${alConfig.channelId}`);
+global.autoLeaderboardIntervals = new Map(); // channelId -> intervalId
+
+global.startAutoLeaderboards = () => {
+    global.stopAutoLeaderboards();
+
+    const entries = config.settings.autoLeaderboards || [];
+    for (const entry of entries) {
+        if (!entry.channelId) continue;
+        const intervalMs = entry.intervalMinutes * 60 * 1000;
+
+        const intervalId = setInterval(async () => {
+            try {
+                const channel = await client.channels.fetch(entry.channelId);
+                if (!channel || !channel.isTextBased()) return;
+
+                const embed = await buildLeaderboardEmbed(dataLogger, entry.timeframe, entry.limit);
+                if (embed) {
+                    await channel.send({ embeds: [embed] });
+                }
+            } catch (err) {
+                console.error(`[AutoLeaderboard:${entry.channelId}] Error posting leaderboard:`, err.message);
+            }
+        }, intervalMs);
+
+        global.autoLeaderboardIntervals.set(entry.channelId, intervalId);
+        console.log(`[AutoLeaderboard] Started for channel ${entry.channelId} — every ${entry.intervalMinutes} min`);
+    }
 };
 
-global.stopAutoLeaderboard = () => {
-    if (global.autoLeaderboardInterval) {
-        clearInterval(global.autoLeaderboardInterval);
-        global.autoLeaderboardInterval = null;
-        console.log('[AutoLeaderboard] Stopped');
+global.stopAutoLeaderboards = () => {
+    for (const intervalId of global.autoLeaderboardIntervals.values()) {
+        clearInterval(intervalId);
     }
+    global.autoLeaderboardIntervals.clear();
 };
 
 // Load Discord commands
@@ -227,8 +248,8 @@ client.once(Events.ClientReady, async (c) => {
         }
     }
 
-    // Start auto leaderboard if configured
-    global.startAutoLeaderboard();
+    // Start auto leaderboards if configured
+    global.startAutoLeaderboards();
 
     // Start player tracker if configured
     global.playerTracker = new PlayerTracker(config, botManager, client);

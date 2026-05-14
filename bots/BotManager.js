@@ -182,6 +182,16 @@ class BotManager extends EventEmitter {
         // The login-loop detector will force a reconnect before real leaks occur.
         bot._client.setMaxListeners(50);
 
+        // Defensive _client error catcher. Some errors (e.g. keepalive timeout in
+        // minecraft-protocol's keepalive.js) are emitted on _client and become unhandled
+        // 'error' events if no listener is attached, which crashes the process.
+        bot._client.on('error', (err) => {
+            const msg = (err && err.message) || String(err);
+            console.error(`[${botId}] _client error: ${msg}`);
+            const instance = this.botInstances.get(botId);
+            if (instance) instance.lastError = msg;
+        });
+
         bot.on('start', () => {
             console.log(`[${botId}] Bot started (start event)`)
         });
@@ -233,6 +243,11 @@ class BotManager extends EventEmitter {
             const instance = this.botInstances.get(botId);
             instance.status = 'online';
             this.emit('botSpawn', botId, bot);
+
+            // Disable physics simulation so mineflayer doesn't drift from the server's
+            // expected position and trigger "Flying is not enabled" anti-cheat kicks.
+            // These bots are chat-only — they never need to walk or fight.
+            bot.physicsEnabled = false;
 
             // Start periodic tasks if enabled
             if (botConfig.periodicTasks?.enabled) {
@@ -324,12 +339,16 @@ class BotManager extends EventEmitter {
             instance.intervalId = null;
         }
 
-        // Detach listeners and force-close the old bot to release sockets/resources
+        // Detach listeners and force-close the old bot to release sockets/resources.
+        // We deliberately do NOT removeAllListeners on _client — that strips mineflayer's
+        // own keepalive/end handlers and causes timers to fire as uncaught errors.
         if (oldBot) {
             try {
                 oldBot.removeAllListeners();
+                // Keep a no-op error handler on _client so any late-firing timer error
+                // (e.g. keepalive timeout) gets swallowed instead of crashing the process.
                 if (oldBot._client) {
-                    oldBot._client.removeAllListeners();
+                    oldBot._client.on('error', () => {});
                 }
                 oldBot.end();
             } catch (err) {
@@ -464,8 +483,10 @@ class BotManager extends EventEmitter {
 
         try {
             instance.bot.removeAllListeners();
+            // Don't removeAllListeners on _client — keep mineflayer's keepalive/cleanup
+            // handlers intact so timers get cleared. Just add a no-op error catcher.
             if (instance.bot._client) {
-                instance.bot._client.removeAllListeners();
+                instance.bot._client.on('error', () => {});
             }
             instance.bot.quit();
         } catch (err) {
