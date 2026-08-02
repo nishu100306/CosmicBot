@@ -57,7 +57,21 @@ class BotManager extends EventEmitter {
             port: botConfig.port,
             username: botConfig.username,
             auth: botConfig.auth,
-            version: botConfig.version
+            version: botConfig.version,
+            // These bots only send commands, never real chat. Disabling chat signing
+            // avoids "Chat message validation failure" kicks caused by the secure-chat
+            // session breaking after the server's configuration-state cycles.
+            disableChatSigning: true,
+            // Suppress protodef's "Chunk size is N but only M was read ; partial packet"
+            // console spam. The server (1.21.11) sends the reworked entity_teleport packet
+            // (velocity + float angles) that mineflayer's packet schema still under-reads,
+            // so every entity teleport logs a partial-packet warning. hideErrors flips
+            // protodef's noErrorLogging flag on the deserializer; it does NOT silence real
+            // emitted client 'error' events, only these recoverable parse warnings. The
+            // bots are chat-only with physics disabled, so the mis-parsed positions are
+            // harmless. Applied to the client so it survives deserializer recreation on
+            // each protocol-state transition.
+            hideErrors: true
         };
 
         // Add password if provided (for offline/cracked servers or specific auth types)
@@ -86,6 +100,10 @@ class BotManager extends EventEmitter {
                 username: botConfig.username,
                 auth: botConfig.auth,
                 version: botConfig.version,
+                disableChatSigning: true,
+                // See the non-proxy botOptions above — suppresses protodef partial-packet
+                // console spam from the reworked 1.21.11 entity_teleport packet.
+                hideErrors: true,
                 connect: (client) => {
                     console.log(`[${botConfig.id}] Connect function called, creating proxy socket...`);
 
@@ -245,9 +263,24 @@ class BotManager extends EventEmitter {
             this.emit('botSpawn', botId, bot);
 
             // Disable physics simulation so mineflayer doesn't drift from the server's
-            // expected position and trigger "Flying is not enabled" anti-cheat kicks.
-            // These bots are chat-only — they never need to walk or fight.
+            // expected position and trigger anti-cheat kicks. These bots are chat-only.
             bot.physicsEnabled = false;
+
+            // If we spawned into a blacklisted dimension (the reboot lobby), the server's
+            // fly-check will kick us within a few seconds. Don't wait for the 60s periodic
+            // cycle — immediately enqueue a high-priority /join to escape.
+            const blacklist = this.config.settings.dimensionBlacklist || [];
+            if (blacklist.includes(bot.game?.dimension) && instance.queue) {
+                console.log(`[${botId}] Spawned in blacklisted dimension '${bot.game?.dimension}' — escaping with /join`);
+                instance.queue.enqueue('escape:/join', (b) => b.chat('/join'), {
+                    priority: BotQueue.PRIORITY.HIGH,
+                    timeoutMs: 15_000
+                }).then(result => {
+                    if (!result.ok) {
+                        console.error(`[${botId}] escape /join failed: ${result.reason} - ${result.error?.message || result.error}`);
+                    }
+                });
+            }
 
             // Start periodic tasks if enabled
             if (botConfig.periodicTasks?.enabled) {
@@ -298,6 +331,24 @@ class BotManager extends EventEmitter {
             if (bot.currentWindow) {
                 console.log(`[${botId}] Respawn detected with open window — force-closing to prevent chat lock`);
                 bot.closeWindow(bot.currentWindow);
+            }
+
+            // Teleported into the reboot lobby mid-session — escape before the fly-check kicks us.
+            const instance = this.botInstances.get(botId);
+            if (!instance || instance.bot !== bot || !instance.queue) return;
+            const blacklist = this.config.settings.dimensionBlacklist || [];
+            if (blacklist.includes(bot.game?.dimension) && !instance.escapePending) {
+                instance.escapePending = true;
+                console.log(`[${botId}] Respawned in blacklisted dimension '${bot.game?.dimension}' — escaping with /join`);
+                instance.queue.enqueue('escape:/join', (b) => b.chat('/join'), {
+                    priority: BotQueue.PRIORITY.HIGH,
+                    timeoutMs: 15_000
+                }).then(result => {
+                    instance.escapePending = false;
+                    if (!result.ok) {
+                        console.error(`[${botId}] escape /join failed: ${result.reason} - ${result.error?.message || result.error}`);
+                    }
+                });
             }
         });
 
