@@ -1,5 +1,62 @@
 const fsp = require('node:fs/promises');
 const path = require('path');
+const nbt = require('prismarine-nbt');
+
+// --- Item name/lore reading ---------------------------------------------------
+// As of Minecraft 1.20.5 items carry their name/lore as *data components* rather
+// than the legacy `display` NBT tag. prismarine-item's `customName`/`customLore`
+// getters were never updated for this, so on a 1.20.5+ server they return null and
+// the old `JSON.parse('[' + customLore + ']')` trophy parsing throws. These helpers
+// read from `item.componentMap` (the new path) and fall back to the legacy NBT
+// strings (in case bots ever connect to a pre-1.20.5 endpoint via ViaVersion),
+// rendering every text component to plain text with prismarine-chat.
+
+// Lazily build and cache a prismarine-chat ChatMessage class bound to the bot's registry.
+function getChatMessage(bot) {
+    if (!bot._cosmicChatMessage) {
+        bot._cosmicChatMessage = require('prismarine-chat')(bot.registry);
+    }
+    return bot._cosmicChatMessage;
+}
+
+// Render one text component (an NBT tag, an already-simplified object, or a JSON
+// string) to plain text, stripping formatting.
+function renderComponent(bot, comp) {
+    const ChatMessage = getChatMessage(bot);
+    let value = comp;
+    if (typeof value === 'string' && (value.startsWith('{') || value.startsWith('['))) {
+        // Legacy lore/name lines arrive as JSON strings.
+        value = JSON.parse(value);
+    }
+    if (value && typeof value === 'object' && 'type' in value && 'value' in value) {
+        // NBT tag form ({ type, value }) — simplify to a plain chat-component object.
+        value = nbt.simplify(value);
+    }
+    return new ChatMessage(value).toString();
+}
+
+// Read an item's custom name as plain text ('' if it has none).
+function readItemName(bot, item) {
+    const comp = item.componentMap?.get('custom_name') || item.componentMap?.get('item_name');
+    if (comp) return renderComponent(bot, comp.data);
+    if (item.customName) {
+        return JSON.parse('[' + item.customName + ']')
+            .filter(Boolean).map(c => renderComponent(bot, c)).join('\n');
+    }
+    return '';
+}
+
+// Read an item's lore as a newline-joined plain-text string ('' if it has none).
+function readItemLore(bot, item) {
+    const comp = item.componentMap?.get('lore');
+    if (comp) return comp.data.map(line => renderComponent(bot, line)).join('\n');
+    if (item.customLore) {
+        return JSON.parse('[' + item.customLore + ']')
+            .filter(Boolean).map(c => renderComponent(bot, c)).join('\n');
+    }
+    return '';
+}
+// -----------------------------------------------------------------------------
 
 class TopRecord {
     constructor(league, leader, level, position, trophies, timestamp) {
@@ -70,12 +127,7 @@ class DataLogger {
                         continue;
                     }
                     const league = key;
-                    const lore = topArr[i].customLore.toString();
-                    const json = JSON.parse('[' + lore + ']');
-                    const loreText = json.filter(x => x)
-                        .map(x => x.extra.map(y => y.text).filter(z => z).join(''))
-                        .join('\n')
-                        .split('+')[0];
+                    const loreText = readItemLore(bot, topArr[i]).split('+')[0];
 
                     const leader = loreText.split('. ')[1].split(' - ')[0];
                     const level = loreText.split('Island Level ')[1].split('\n')[0];
@@ -134,17 +186,11 @@ class DataLogger {
             const items = bot.currentWindow.containerItems();
 
             for (let i = 0; i < items.length; i++) {
-                if (items[i].customName.includes('.')) {
-                    const nameJson = JSON.parse('[' + items[i].customName + ']');
-                    const name = nameJson.filter(x => x)
-                        .map(x => x.extra.map(y => y.text).filter(z => z).join(''))
-                        .join('\n');
+                const name = readItemName(bot, items[i]);
+                if (name.includes('.')) {
                     const ign = name.split('.')[1].trim();
 
-                    const loreJson = JSON.parse('[' + items[i].customLore + ']');
-                    const lore = loreJson.filter(x => x)
-                        .map(x => x.extra.map(y => y.text).filter(z => z).join(''))
-                        .join('\n');
+                    const lore = readItemLore(bot, items[i]);
                     const exp = lore.split(':')[1].trim().replaceAll(',', '');
 
                     const playerFile = path.join(this.playersDir, `${ign}.txt`);
